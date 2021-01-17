@@ -1,7 +1,6 @@
 let _W = 0;
 let _H = 0;
 let _C = "";
-let _this = null;
 
 
 let _step = (function() {
@@ -57,7 +56,7 @@ function getImage(img) {
 
 
 class Paper2D {
-	constructor(w, h, c) {
+	constructor(w, h, c, img) {
 		_W = w || _W;
 		_H = h || _H;
 		_C = c || _C;
@@ -68,11 +67,15 @@ class Paper2D {
 		this.cnv.style.backgroundColor = _C;
 		this.ctx = this.cnv.getContext("2d");
 
-		_this = this;
+		this.img = img;
+		if (img) loadImage(img);
 
 		this.childs = [];
 
 		this.run = false;
+
+		this.cam_x = 0;
+		this.cam_y = 0;
 	}
 
 	Start() {
@@ -94,13 +97,18 @@ class Paper2D {
 	}
 
 	Engine() {
-		_this.ctx.clearRect(0, 0, _W, _H);
-		_this.Update();
-		if (_this.run) _step(_this.Engine)
+		if (this.img == null)
+			this.ctx.clearRect(0, 0, _W, _H);
+		else {
+			let img = getImage(this.img);
+			if (img) this.ctx.drawImage(img, 0, 0, _W, _H);
+		}
+		this.Update();
+		if (this.run) _step(this.Engine.bind(this))
 	}
 
-	CreateRect(x, y, w, h, c, img = null, k = true, cc = true, m = 1, onUpd = null, onColl = null, onCrt = null) {
-		let o = new _Rect(x, y, w, h, c, img, k, cc, m);
+	CreateRect(x, y, w, h, c, img = null, k = true, cc = true, m = 1, onUpd = null, onColl = null, onCrt = null, tag = null) {
+		let o = new _Rect(this, x, y, w, h, c, img, k, cc, m, tag);
 		o.onUpdate = onUpd || function(){};
 		o.onCollision = onColl || function(o, d){};
 		o.onCreate = onCrt || function() {;}
@@ -109,12 +117,12 @@ class Paper2D {
 	}
 
 	CreateSprite(x, y, w, h, img = null) {
-		let o = new _Sprite(x, y, w, h, img);
+		let o = new _Sprite(this, x, y, w, h, img);
 		this.childs.push(o);
 	}
 
 	CreateTileMap(x, y, t, m, w, h) {
-		let o = new _TileMap(x, y, t, m, w, h);
+		let o = new _TileMap(this, x, y, t, m, w, h);
 		this.childs.push(o);
 	}
 }
@@ -126,15 +134,10 @@ class Box {
 		this.w = w;
 		this.h = h;
 	}
-
-	draw() {
-		_this.ctx.fillStyle = 'yellow';
-		_this.ctx.fillRect(this.x, this.y, this.w, this.h);
-	}
 }
 
 class _Rect {
-	constructor(x, y, w, h, c, img, k, cc, m) {
+	constructor(p, x, y, w, h, c, img, k, cc, m, tag=null) {
 		this.x = x;
 		this.y = y;
 		this.w = w;
@@ -150,20 +153,54 @@ class _Rect {
 		this.dx = 0;
 		this.dy = 0;
 
-		this.tag = null;
+		this.tag = tag;
+
+		this.p = p;
+
+		this.animation_x = 0;
+		this.animation_y = 0;
+		this.animation_w = 0;
+		this.animation_h = 0;
+		this.animation_dx = 0;
+		this.animation_dy = 0;
+		this.animation_max_x = 0;
+		this.animation_max_y = 0;
+		
+		this.animate = false;
+	}
+
+	setAnimation(x, y, w, h, dx, dy, mx, my) {
+		this.animation_x = x;
+		this.animation_y = y;
+		this.animation_w = w;
+		this.animation_h = h;
+		this.animation_dx = dx;
+		this.animation_dy = dy;
+		this.animation_max_x = mx;
+		this.animation_max_y = my;
+
+		this.animate = true;
 	}
 
 	draw() {
 		if (this.img) {
 			let img = getImage(this.img);
 			if (img) {
-				_this.ctx.drawImage(img, this.x, this.y, this.w, this.h);
+				if (this.animate) {
+					this.p.ctx.drawImage(img, 
+						this.animation_x, this.animation_y, this.animation_w, this.animation_h,
+						this.x-this.p.cam_x, this.y-this.p.cam_y, this.w, this.h);
+
+					this.animation_x = (this.animation_x + this.animation_dx) % this.animation_max_x;
+					this.animation_y = (this.animation_y + this.animation_dy) % this.animation_max_y;
+				}
+				else this.p.ctx.drawImage(img, this.x-this.p.cam_x, this.y-this.p.cam_y, this.w, this.h);
 			}
 		}
 
 		else {
-			_this.ctx.fillStyle = this.c;
-			_this.ctx.fillRect(this.x - 0.5, this.y - 0.5, this.w + 1, this.h + 1);
+			this.p.ctx.fillStyle = this.c;
+			this.p.ctx.fillRect(this.x - 0.5 - this.p.cam_x, this.y - 0.5 - this.p.cam_y, this.w + 1, this.h + 1);
 		}
 	}
 
@@ -172,7 +209,7 @@ class _Rect {
 		let cy = 0;
 
 		if (this.kinematic == true && this.can_coll == true) {
-			for (let i of _this.childs) {
+			for (let i of this.p.childs) {
 				if (i == this || i.can_coll == false) continue;
 
 				if (i instanceof _TileMap) {
@@ -228,32 +265,34 @@ class _Rect {
 
 
 class _Sprite {
-	constructor(x, y, w, h, img) {
+	constructor(p, x, y, w, h, img) {
 		this.x = x;
 		this.y = y;
 		this.w = w;
 		this.h = h;
 		this.img = img;
+		this.p = p;
 		loadImage(img);
 	}
 
 	draw() {
 		let img = getImage(this.img);
 		if (img) {
-			_this.ctx.drawImage(img, this.x, this.y, this.w, this.h);
+			this.p.ctx.drawImage(img, this.x - this.p.cam_x, this.y - this.p.cam_y, this.w, this.h);
 		}
 	}
 }
 
 
 class _TileMap {
-	constructor(x, y, t, m, w, h) {
+	constructor(p, x, y, t, m, w, h) {
 		this.x = x;
 		this.y = y;
 		this.t = t;
 		this.m = m;
 		this.w = w;
 		this.h = h;
+		this.p = p;
 
 		this.childs = [];
 		this.tiles = {};
@@ -266,7 +305,7 @@ class _TileMap {
 		this.tiles = {};
 
 		for (let i in this.t) {
-			loadImage(this.t[i]["texture"]);
+			loadImage(this.t[i].texture);
 			this.tiles[i] = this.t[i];
 		}
 
@@ -275,11 +314,11 @@ class _TileMap {
 				for (let j = 0; j < k[i].length; j++) {
 					let tile = this.tiles[k[i][j]];
 
-					let xs = tile["scale_w"];
-					let ys = tile["scale_h"];
-					let coll = tile["collision"];
-					let ox = tile["offset_x"];
-					let oy = tile["offset_y"];
+					let xs = tile.scale_w;
+					let ys = tile.scale_h;
+					let coll = tile.collision;
+					let ox = tile.offset_x;
+					let oy = tile.offset_y;
 
 					if (xs == undefined) xs = 1;
 					if (ys == undefined) ys = 1;
@@ -289,9 +328,9 @@ class _TileMap {
 					if (coll == undefined) coll = false;
 
 					if (coll == true)// x, y, w, h, c, img, k, cc, m
-						this.childs.push(new _Rect(ox + this.x + j * this.w, oy + this.y + i * this.h, this.w * xs, this.h * ys, "", tile["texture"], false, true, 0));
+						this.childs.push(new _Rect(this.p, ox + this.x + j * this.w, oy + this.y + i * this.h, this.w * xs, this.h * ys, "", tile["texture"], false, true, 0));
 					else
-						this.childs.push(new _Sprite(ox + this.x + j * this.w, oy + this.y + i * this.h, this.w * xs, this.h * ys, tile["texture"]));
+						this.childs.push(new _Sprite(this.p, ox + this.x + j * this.w, oy + this.y + i * this.h, this.w * xs, this.h * ys, tile["texture"]));
 				}
 			}
 		}
