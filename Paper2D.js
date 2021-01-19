@@ -52,7 +52,7 @@ function getImage(img) {
 
 class Paper2D {
 	constructor(w, h, c, img) {
-		this.w = w || _W;
+		this.w = w || 0;
 		this.h = h || 0;
 		this.c = c || "";
 
@@ -61,6 +61,8 @@ class Paper2D {
 		this.cnv.height = this.h;
 		this.cnv.style.backgroundColor = this.c;
 		this.ctx = this.cnv.getContext("2d");
+		this.ctx.font = '20px serif';
+		this.ctx.textAlign = "center";
 
 		this.img = img;
 		if (img) loadImage(img);
@@ -147,7 +149,7 @@ class Paper2D {
 		let o = new _Rect(this, x, y, w, h, c, img, k, cc, m, tag);
 		o.onUpdate = onUpd || function(){};
 		o.onCollision = onColl || function(o, d){};
-		o.onCreate = onCrt || function() {;}
+		o.onCreate = onCrt || function() {}
 		o.onCreate();
 		this.childs.push(o);
 	}
@@ -202,7 +204,9 @@ class _Rect {
 		this.animation_max_x = 0;
 		this.animation_max_y = 0;
 		this.animation_frame = 0;
-		this.animation_speed = 0; 
+		this.animation_speed = 0;
+		this.animation_start_x = 0;
+		this.animation_start_y = 0; 
 		
 		this.animate = false;
 	}
@@ -210,6 +214,8 @@ class _Rect {
 	setAnimation(x, y, w, h, dx, dy, mx, my, sp=1) {
 		this.animation_x = x;
 		this.animation_y = y;
+		this.animation_start_x = x;
+		this.animation_start_y = y;
 		this.animation_w = w;
 		this.animation_h = h;
 		this.animation_dx = dx;
@@ -234,6 +240,9 @@ class _Rect {
 						this.animation_x = (this.animation_x + this.animation_dx) % this.animation_max_x;
 						this.animation_y = (this.animation_y + this.animation_dy) % this.animation_max_y;
 						this.animation_frame = 0;
+
+						if (this.animation_x < this.animation_start_x) this.animation_x = this.animation_start_x;
+						if (this.animation_y < this.animation_start_y) this.animation_y = this.animation_start_y;
 					}
 					else this.animation_frame += this.animation_speed;   
 				}
@@ -257,7 +266,7 @@ class _Rect {
 
 		if (this.kinematic == true && this.can_coll == true) {
 			for (let i of this.p.childs) {
-				if (i == this || i.can_coll == false) continue;
+				if (i == this || i.can_coll == false || i instanceof _Sprite) continue;
 
 				if (i instanceof _TileMap) {
 					for (let j of i.childs) {
