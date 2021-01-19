@@ -1,8 +1,3 @@
-let _W = 0;
-let _H = 0;
-let _C = "";
-
-
 let _step = (function() {
 	return requestAnimationFrame ||
 	mozRequestAnimationFrame ||
@@ -57,14 +52,14 @@ function getImage(img) {
 
 class Paper2D {
 	constructor(w, h, c, img) {
-		_W = w || _W;
-		_H = h || _H;
-		_C = c || _C;
+		this.w = w || _W;
+		this.h = h || 0;
+		this.c = c || "";
 
 		this.cnv = document.createElement('canvas');
-		this.cnv.width = _W;
-		this.cnv.height = _H;
-		this.cnv.style.backgroundColor = _C;
+		this.cnv.width = this.w;
+		this.cnv.height = this.h;
+		this.cnv.style.backgroundColor = this.c;
 		this.ctx = this.cnv.getContext("2d");
 
 		this.img = img;
@@ -76,6 +71,33 @@ class Paper2D {
 
 		this.cam_x = 0;
 		this.cam_y = 0;
+		
+		this.animation_x = 0;
+		this.animation_y = 0;
+		this.animation_w = 0;
+		this.animation_h = 0;
+		this.animation_dx = 0;
+		this.animation_dy = 0;
+		this.animation_max_x = 0;
+		this.animation_max_y = 0;
+		this.animation_frame = 0;
+		this.animation_speed = 0; 
+		
+		this.animate = false;
+	}
+	
+	setAnimation(x, y, w, h, dx, dy, mx, my, sp=1) {
+		this.animation_x = x;
+		this.animation_y = y;
+		this.animation_w = w;
+		this.animation_h = h;
+		this.animation_dx = dx;
+		this.animation_dy = dy;
+		this.animation_max_x = mx;
+		this.animation_max_y = my;
+		this.animation_speed = sp;
+		
+		this.animate = true;
 	}
 
 	Start() {
@@ -98,10 +120,24 @@ class Paper2D {
 
 	Engine() {
 		if (this.img == null)
-			this.ctx.clearRect(0, 0, _W, _H);
+			this.ctx.clearRect(0, 0, this.w, this.h);
 		else {
 			let img = getImage(this.img);
-			if (img) this.ctx.drawImage(img, 0, 0, _W, _H);
+			if (img) {
+				if (this.animate) {
+					this.ctx.drawImage(img, 
+					this.animation_x, this.animation_y, this.animation_w, this.animation_h,
+					0, 0, this.w, this.h);
+					
+					if (this.animation_frame >= 1) {
+						this.animation_x = (this.animation_x + this.animation_dx) % this.animation_max_x;
+						this.animation_y = (this.animation_y + this.animation_dy) % this.animation_max_y;
+						this.animation_frame = 0;
+					}
+					else this.animation_frame += this.animation_speed;
+				}
+				else this.ctx.drawImage(img, 0, 0, this.w, this.h);
+			}
 		}
 		this.Update();
 		if (this.run) _step(this.Engine.bind(this))
@@ -116,8 +152,8 @@ class Paper2D {
 		this.childs.push(o);
 	}
 
-	CreateSprite(x, y, w, h, img = null) {
-		let o = new _Sprite(this, x, y, w, h, img);
+	CreateSprite(x, y, w, h, img = null, tag = null) {
+		let o = new _Sprite(this, x, y, w, h, img, tag);
 		this.childs.push(o);
 	}
 
@@ -165,11 +201,13 @@ class _Rect {
 		this.animation_dy = 0;
 		this.animation_max_x = 0;
 		this.animation_max_y = 0;
+		this.animation_frame = 0;
+		this.animation_speed = 0; 
 		
 		this.animate = false;
 	}
 
-	setAnimation(x, y, w, h, dx, dy, mx, my) {
+	setAnimation(x, y, w, h, dx, dy, mx, my, sp=1) {
 		this.animation_x = x;
 		this.animation_y = y;
 		this.animation_w = w;
@@ -178,6 +216,7 @@ class _Rect {
 		this.animation_dy = dy;
 		this.animation_max_x = mx;
 		this.animation_max_y = my;
+		this.animation_speed = sp;
 
 		this.animate = true;
 	}
@@ -190,11 +229,19 @@ class _Rect {
 					this.p.ctx.drawImage(img, 
 						this.animation_x, this.animation_y, this.animation_w, this.animation_h,
 						this.x-this.p.cam_x, this.y-this.p.cam_y, this.w, this.h);
-
-					this.animation_x = (this.animation_x + this.animation_dx) % this.animation_max_x;
-					this.animation_y = (this.animation_y + this.animation_dy) % this.animation_max_y;
+					
+					if (this.animation_frame >= 1) {
+						this.animation_x = (this.animation_x + this.animation_dx) % this.animation_max_x;
+						this.animation_y = (this.animation_y + this.animation_dy) % this.animation_max_y;
+						this.animation_frame = 0;
+					}
+					else this.animation_frame += this.animation_speed;   
 				}
 				else this.p.ctx.drawImage(img, this.x-this.p.cam_x, this.y-this.p.cam_y, this.w, this.h);
+			}
+			else {
+				this.p.ctx.fillStyle = this.c;
+				this.p.ctx.fillRect(this.x - 0.5 - this.p.cam_x, this.y - 0.5 - this.p.cam_y, this.w + 1, this.h + 1);
 			}
 		}
 
@@ -265,13 +312,14 @@ class _Rect {
 
 
 class _Sprite {
-	constructor(p, x, y, w, h, img) {
+	constructor(p, x, y, w, h, img, tag = null) {
 		this.x = x;
 		this.y = y;
 		this.w = w;
 		this.h = h;
 		this.img = img;
 		this.p = p;
+		this.tag = tag;
 		loadImage(img);
 	}
 
@@ -281,6 +329,10 @@ class _Sprite {
 			this.p.ctx.drawImage(img, this.x - this.p.cam_x, this.y - this.p.cam_y, this.w, this.h);
 		}
 	}
+	
+	onUpdate() {}
+	onCollision(o, d) {}
+	onCreate() {}
 }
 
 
